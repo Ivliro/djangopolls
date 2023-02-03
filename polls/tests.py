@@ -1,9 +1,91 @@
 import datetime
 from django.test import TestCase
 from django.utils import timezone
+from django.urls import reverse
 from .models import Question
 
 # Create your tests here.
+
+def create_question(question_text, days):
+    """Create question published 'days' offset to now (negative in past)."""
+    time = timezone.now() + datetime.timedelta(days=days)
+    return Question.objects.create(question_text=question_text, pub_date=time)
+
+class QuestionIndexViewTests(TestCase):
+    def test_no_question(self):
+        """If no questions exist, message should be displayed"""
+        response = self.client.get(reverse('polls:index'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No polls are available.")
+        self.assertQuerysetEqual(response.context['latest_question_list'], [])
+
+    def test_past_question(self):
+        """Questions of past are shown on index page"""
+        question = create_question(question_text="Past question.", days=-30)
+        response = self.client.get(reverse('polls:index'))
+        self.assertQuerysetEqual(
+            response.context['latest_question_list'],
+            [question],
+        )
+    
+    def test_future_question(self):
+        """question of the future cant be seen on index page"""
+        create_question(question_text="Future question.", days=30)
+        response = self.client.get(reverse('polls:index'))
+        self.assertContains(response, "No polls are available.")
+        self.assertQuerysetEqual(response.context['latest_question_list'], [])
+
+    def test_future_question_and_past_question(self):
+        """Even if future questions exist, only past question shown"""
+        question = create_question(question_text="Past question.", days=-30)
+        create_question(question_text="Future question.", days=30)
+        response = self.client.get(reverse('polls:index'))
+        self.assertQuerysetEqual(
+            response.context['latest_question_list'],
+            [question],
+        )
+
+    def test_two_past_questions(self):
+        """index page may display multiple questions."""
+        question1 = create_question(question_text="Past question 1.", days=-30)
+        question2 = create_question(question_text="Past question 2.", days=-5)
+        response = self.client.get(reverse('polls:index'))
+        self.assertQuerysetEqual(
+            response.context['latest_question_list'],
+            [question2, question1],
+        )
+
+class QuestionDetailViewTests(TestCase):
+    def test_future_question(self):
+        """detail view of future question returns 404"""
+        future_question = create_question(question_text="Future question.", days=5)
+        url = reverse('polls:detail', args=(future_question.id,))
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+    
+    def test_past_question(self):
+        """detail view of past question displays question's text"""
+        past_question = create_question(question_text="Past Question.", days=-5)
+        url = reverse('polls:detail', args=(past_question.id,))
+        response = self.client.get(url)
+        self.assertContains(response, past_question.question_text)
+
+#toto so pridal sam, neviem ci dobre
+class QuestionResultsViewTests(TestCase):
+    def test_future_question(self):
+        """results view of future question returns 404"""
+        future_question = create_question(question_text="Future question.", days=5)
+        url = reverse('polls:results', args=(future_question.id,))
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_past_question(self):
+        """results view of past question displays question's text"""
+        past_question = create_question(question_text="Past Question.", days=-5)
+        url = reverse('polls:results', args=(past_question.id,))
+        response = self.client.get(url)
+        self.assertContains(response, past_question.question_text)
+
 class QuestionModelTests(TestCase):
     def test_was_pubished_recently_with_future_question(self):
         """was_published_recently() returns False for future questions"""
